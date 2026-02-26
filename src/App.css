@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+html {
+  font-size: clamp(14px, 0.84vw, 16px);
+  scroll-behavior: smooth;
+  position: relative;
+}
+
+button {
+  cursor: pointer;
+}
