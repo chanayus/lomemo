@@ -3,12 +3,22 @@ import "leaflet/dist/leaflet.css";
 
 import { useState, useEffect } from "react";
 import { MapContainer, TileLayer, Popup, Marker, useMapEvents } from "react-leaflet";
-import { m } from "motion/react";
+import { AnimatePresence, m } from "motion/react";
 
 import { FaLocationArrow } from "react-icons/fa6";
-import { IoClose, IoTrashOutline } from "react-icons/io5"; // เพิ่ม Icon ถังขยะ
+import { IoClose, IoTrashOutline, IoSearch } from "react-icons/io5"; // เพิ่ม Icon ถังขยะ
 import { GoStarFill } from "react-icons/go";
 import { categories } from "./data/categories";
+
+import L from "leaflet";
+
+// สร้าง Custom Icon
+const customIcon = new L.Icon({
+  iconUrl: "/marker.png", // เปลี่ยนเป็นพาธรูปของคุณ เช่น "/my-marker.svg"
+  iconSize: [38, 38], // ขนาดของ Icon [กว้าง, สูง]
+  iconAnchor: [19, 38], // จุดที่วางบนพิกัด (ปกติคือ กึ่งกลางฐานล่าง: กว้าง/2, สูง)
+  popupAnchor: [0, -38], // จุดที่ Popup จะเด้งออกมา (สัมพันธ์กับ iconAnchor)
+});
 
 function MapEvents({ setClickedPos, setPlaceName, setCategory, setIsSearching }) {
   const map = useMapEvents({
@@ -123,17 +133,89 @@ function App() {
     }
   };
 
+  const goToLocation = (lat, lng) => {
+    if (map) {
+      map.flyTo([lat, lng], 18, {
+        // เลื่อนไปพิกัดนั้นด้วยความซูมระดับ 18
+        animate: true,
+        duration: 1.5,
+      });
+      setShowFavorites(false); // ปิดหน้าต่างรายการโปรดเพื่อดูแผนที่
+    }
+  };
+
+  const [searchQuery, setSearchQuery] = useState("");
+  // const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+
+  const handleSearch = async (e) => {
+    e.preventDefault();
+    if (!searchQuery.trim() || !map) return;
+
+    try {
+      // ส่งชื่อไปค้นหาพิกัดจาก Nominatim
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=1&accept-language=th`);
+      const data = await res.json();
+
+      if (data && data.length > 0) {
+        const { lat, lon, display_name } = data[0];
+        const targetPos = [parseFloat(lat), parseFloat(lon)];
+
+        // 1. เลื่อนแผนที่ไป
+        map.flyTo(targetPos, 16, { animate: true, duration: 1.5 });
+
+        // 2. ตั้งค่าให้ขึ้น Form บันทึกสถานที่ทันที (Optional)
+        setClickedPos({ lat: parseFloat(lat), lng: parseFloat(lon) });
+        setPlaceName(display_name.split(",")[0]); // เอาชื่อสั้นๆ มาแสดง
+      } else {
+        alert("ไม่พบสถานที่ที่ค้นหา ลองระบุชื่อให้ชัดเจนขึ้น เช่น 'วัดพระแก้ว กทม.'");
+      }
+    } catch (err) {
+      alert("เกิดข้อผิดพลาดในการค้นหา");
+    }
+  };
+
+  const [suggestions, setSuggestions] = useState(null); // เก็บรายการสถานที่ที่ API แนะนำ
+  // const [showSuggestions, setShowSuggestions] = useState(false);
+  const [searchingSuggestions, setSearchingSuggestions] = useState(false);
+
+  useEffect(() => {
+    const fetchSuggestions = async () => {
+      if (searchQuery.length < 3) {
+        // พิมพ์อย่างน้อย 3 ตัวอักษรค่อยเริ่มหา
+
+        setSuggestions(null);
+        return;
+      }
+
+      setSearchingSuggestions(true);
+
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=20&accept-language=th&countrycodes=th`);
+        const data = await res.json();
+        setSuggestions(data);
+      } catch (err) {
+        console.error("Error fetching suggestions:", err);
+      } finally {
+        setSearchingSuggestions(false);
+      }
+    };
+
+    // ใช้ Debounce เพื่อไม่ให้ยิง API บ่อยเกินไปขณะพิมพ์
+    const timeoutId = setTimeout(fetchSuggestions, 500);
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery]);
+
   return (
     <div className="flex flex-col w-full h-screen relative text-white">
       <div className="w-full h-full relative z-10">
         <MapContainer ref={setMap} style={{ width: "100%", height: "100%" }} center={[13.7563, 100.5018]} zoom={13} scrollWheelZoom={true}>
-          <TileLayer attribution="© OpenStreetMap" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
           <MapEvents setClickedPos={setClickedPos} setPlaceName={setPlaceName} setCategory={setCategory} setIsSearching={setIsSearching} />
-          {clickedPos && <Marker position={[clickedPos.lat, clickedPos.lng]}></Marker>}
+          {clickedPos && <Marker position={[clickedPos.lat, clickedPos.lng]} icon={customIcon}></Marker>}
 
           {favorites.map((fav) => (
-            <Marker key={fav.id} position={[fav.lat, fav.lng]}>
+            <Marker key={fav.id} position={[fav.lat, fav.lng]} icon={customIcon}>
               <Popup>
                 <div className="text-black text-sm">
                   <div className="bg-blue-600 text-white px-3 py-1 rounded">{fav.category}</div>
@@ -158,6 +240,57 @@ function App() {
         <button onClick={handleLocateMe} className="bg-black/60 backdrop-blur-md p-1.5 rounded-lg size-10 flex items-center justify-center border border-white/20 shadow-xl">
           <FaLocationArrow size={22} color="#fff" />
         </button>
+      </div>
+
+      {/* Search Container */}
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[70%] max-w-md">
+        <div className="relative group">
+          <form onSubmit={handleSearch} className="flex items-center bg-black/80 text-white backdrop-blur-md rounded-2xl shadow-2xl border border-white/20 overflow-hidden">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="ค้นหาสถานที่..."
+              className="w-full text-white py-3 px-5 focus:outline-none bg-transparent"
+            />
+            <button type="submit" className="p-3 text-white">
+              <IoSearch size={22} />
+            </button>
+          </form>
+
+          {/* Dropdown Suggestions */}
+          <AnimatePresence>
+            {(suggestions !== null || searchingSuggestions) && (
+              <m.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute top-full left-0 w-full mt-2 bg-black/80 backdrop-blur-md rounded-2xl shadow-2xl border border-white/25 overflow-y-auto max-h-96 "
+              >
+                {searchingSuggestions && <p className="text-center text-white/75 py-4">กำลังค้นหา...</p>}
+                {suggestions?.length === 0 && !searchingSuggestions && <p className="text-center text-white/75 py-4">ไม่พบสถานที่</p>}
+                {suggestions?.map((item, index) => (
+                  <button
+                    key={index}
+                    className="w-full text-left px-5 py-3 hover:bg-black/50 border-b border-white/20 last:border-none flex flex-col transition-colors"
+                    onClick={() => {
+                      const targetPos = [parseFloat(item.lat), parseFloat(item.lon)];
+                      map.flyTo(targetPos, 17); // เลื่อนแผนที่
+                      setClickedPos({ lat: parseFloat(item.lat), lng: parseFloat(item.lon) }); // เปิดฟอร์มบันทึก
+                      setPlaceName(item.display_name.split(",")[0]); // ใส่ชื่อสถานที่
+                      setSearchQuery(item.display_name.split(",")[0]); // อัปเดตช่องค้นหา
+                      setSuggestions([]); // ล้างรายการแนะนำ
+                      // setShowSuggestions(false);
+                    }}
+                  >
+                    <span className="font-bold text-sm line-clamp-1">{item.display_name.split(",")[0]}</span>
+                    <span className="text-xs text-white/50 line-clamp-1">{item.display_name}</span>
+                  </button>
+                ))}
+              </m.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
 
       {/* ส่วนแสดงรายการโปรด */}

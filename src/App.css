@@ -9,3 +9,19 @@ html {
 button {
   cursor: pointer;
 }
+
+.leaflet-control-attribution {
+  display: none;
+}
+
+.leaflet-control-zoom {
+  border-radius: 0.5rem !important;
+  overflow: hidden;
+  border: none !important;
+  & > a {
+    background: rgba(0, 0, 0, 0.6) !important;
+    color: #fff !important;
+    backdrop-filter: blur(10px);
+  }
+}
+
