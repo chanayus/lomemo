@@ -353,7 +353,7 @@ function App() {
         initial={{ y: "100%" }}
         animate={{ y: clickedPos ? "0%" : "100%" }}
         transition={{ duration: 0.5, ease: [0.25, 1, 0.5, 1] }}
-        className="h-fit bottom-0 space-y-4 left-0 z-40 fixed w-full p-6 bg-black/80 backdrop-blur-md border-t border-white/20 rounded-t-3xl shadow-2xl"
+        className="h-fit bottom-0 space-y-4 left-0 z-40 fixed w-full p-6 pb-12 bg-black/80 backdrop-blur-md border-t border-white/20 rounded-t-3xl shadow-2xl"
       >
         <div className="max-w-md mx-auto">
           <hgroup className="flex items-center justify-between mb-4">
