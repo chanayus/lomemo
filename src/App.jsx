@@ -14,7 +14,7 @@ import L from "leaflet";
 import useNotification from "./hooks/useNotification";
 import Notification from "./components/ui/Notification";
 import { useModal } from "./providers/ModalProvider";
-import ConfirmDelete from "./components/modals/confirmDelete";
+import ConfirmDelete from "./components/modals/ConfirmDelete";
 
 // สร้าง Custom Icon
 const customIcon = new L.Icon({
