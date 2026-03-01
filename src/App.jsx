@@ -11,6 +11,10 @@ import { GoStarFill } from "react-icons/go";
 import { categories } from "./data/categories";
 
 import L from "leaflet";
+import useNotification from "./hooks/useNotification";
+import Notification from "./components/ui/Notification";
+import { useModal } from "./providers/ModalProvider";
+import ConfirmDelete from "./components/modals/confirmDelete";
 
 // สร้าง Custom Icon
 const customIcon = new L.Icon({
@@ -20,7 +24,7 @@ const customIcon = new L.Icon({
   popupAnchor: [0, -38], // จุดที่ Popup จะเด้งออกมา (สัมพันธ์กับ iconAnchor)
 });
 
-function MapEvents({ setClickedPos, setPlaceName, setCategory, setIsSearching }) {
+function MapEvents({ setClickedPos, setPlaceName, setCategory, setIsSearching, addNotification }) {
   const map = useMapEvents({
     async click(e) {
       const { lat, lng } = e.latlng;
@@ -56,8 +60,7 @@ function MapEvents({ setClickedPos, setPlaceName, setCategory, setIsSearching })
     },
     // เมื่อหาตำแหน่งไม่สำเร็จ (สำคัญมากเพื่อเช็คว่าทำไมไม่ทำงาน)
     locationerror(e) {
-      console.error(e.message);
-      alert("ไม่สามารถเข้าถึงตำแหน่งของคุณได้: " + e.message);
+      addNotification({ desc: e.message, type: "error" });
     },
   });
   return null;
@@ -73,20 +76,12 @@ function App() {
   const [isSearching, setIsSearching] = useState(false);
   const [showFavorites, setShowFavorites] = useState(false);
 
-  useEffect(() => {
-    const savedFavorites = JSON.parse(localStorage.getItem("my_favorites") || "[]");
-    setFavorites(savedFavorites);
-  }, []);
-
-  useEffect(() => {
-    if (clickedPos) {
-      setShowFavorites(false);
-    }
-  }, [clickedPos]);
+  const { addNotification } = useNotification();
+  const { openModal } = useModal();
 
   const handleSaveFavorite = () => {
     if (!placeName || !category || isSearching) {
-      alert("กรุณากรอกข้อมูลให้ครบถ้วน");
+      addNotification({ desc: "กรุณากรอกข้อมูลให้ครบถ้วน", type: "error" });
       return;
     }
 
@@ -102,17 +97,15 @@ function App() {
     setFavorites(updatedFavorites);
     localStorage.setItem("my_favorites", JSON.stringify(updatedFavorites));
 
-    alert("บันทึกเรียบร้อย!");
+    addNotification({ desc: "บันทึกข้อมูลสำเร็จ!", type: "success" });
     setClickedPos(null);
   };
 
   // ฟังก์ชันลบรายการโปรด
   const deleteFavorite = (id) => {
-    if (window.confirm("คุณต้องการลบรายการนี้ใช่หรือไม่?")) {
-      const updated = favorites.filter((f) => f.id !== id);
-      setFavorites(updated);
-      localStorage.setItem("my_favorites", JSON.stringify(updated));
-    }
+    const updated = favorites.filter((f) => f.id !== id);
+    setFavorites(updated);
+    localStorage.setItem("my_favorites", JSON.stringify(updated));
   };
 
   const getGoogleMapsUrl = (lat, lng, name = "") => {
@@ -136,46 +129,27 @@ function App() {
   const goToLocation = (lat, lng) => {
     if (map) {
       map.flyTo([lat, lng], 18, {
-        // เลื่อนไปพิกัดนั้นด้วยความซูมระดับ 18
         animate: true,
         duration: 1.5,
       });
-      setShowFavorites(false); // ปิดหน้าต่างรายการโปรดเพื่อดูแผนที่
     }
   };
+
+  useEffect(() => {
+    const savedFavorites = JSON.parse(localStorage.getItem("my_favorites") || "[]");
+    setFavorites(savedFavorites);
+
+    handleLocateMe();
+  }, []);
+
+  useEffect(() => {
+    if (clickedPos) {
+      setShowFavorites(false);
+    }
+  }, [clickedPos]);
 
   const [searchQuery, setSearchQuery] = useState("");
-  // const [isSearchingLocation, setIsSearchingLocation] = useState(false);
-
-  const handleSearch = async (e) => {
-    e.preventDefault();
-    if (!searchQuery.trim() || !map) return;
-
-    try {
-      // ส่งชื่อไปค้นหาพิกัดจาก Nominatim
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=1&accept-language=th`);
-      const data = await res.json();
-
-      if (data && data.length > 0) {
-        const { lat, lon, display_name } = data[0];
-        const targetPos = [parseFloat(lat), parseFloat(lon)];
-
-        // 1. เลื่อนแผนที่ไป
-        map.flyTo(targetPos, 16, { animate: true, duration: 1.5 });
-
-        // 2. ตั้งค่าให้ขึ้น Form บันทึกสถานที่ทันที (Optional)
-        setClickedPos({ lat: parseFloat(lat), lng: parseFloat(lon) });
-        setPlaceName(display_name.split(",")[0]); // เอาชื่อสั้นๆ มาแสดง
-      } else {
-        alert("ไม่พบสถานที่ที่ค้นหา ลองระบุชื่อให้ชัดเจนขึ้น เช่น 'วัดพระแก้ว กทม.'");
-      }
-    } catch (err) {
-      alert("เกิดข้อผิดพลาดในการค้นหา");
-    }
-  };
-
   const [suggestions, setSuggestions] = useState(null); // เก็บรายการสถานที่ที่ API แนะนำ
-  // const [showSuggestions, setShowSuggestions] = useState(false);
   const [searchingSuggestions, setSearchingSuggestions] = useState(false);
 
   useEffect(() => {
@@ -207,11 +181,12 @@ function App() {
 
   return (
     <div className="flex flex-col w-full h-screen relative text-white">
+      <Notification />
       <div className="w-full h-full relative z-10">
         <MapContainer ref={setMap} style={{ width: "100%", height: "100%" }} center={[13.7563, 100.5018]} zoom={13} scrollWheelZoom={true}>
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
-          <MapEvents setClickedPos={setClickedPos} setPlaceName={setPlaceName} setCategory={setCategory} setIsSearching={setIsSearching} />
+          <MapEvents setClickedPos={setClickedPos} setPlaceName={setPlaceName} setCategory={setCategory} setIsSearching={setIsSearching} addNotification={addNotification} />
           {clickedPos && <Marker position={[clickedPos.lat, clickedPos.lng]} icon={customIcon}></Marker>}
 
           {favorites.map((fav) => (
@@ -233,19 +208,19 @@ function App() {
             setShowFavorites(true);
             setClickedPos(null);
           }}
-          className="bg-black/60 backdrop-blur-md p-1.5 rounded-lg size-10 flex items-center justify-center border border-white/20 shadow-xl"
+          className="bg-black/80 backdrop-blur-md p-1.5 rounded-lg size-10 flex items-center justify-center border border-white/20 shadow-xl"
         >
           <GoStarFill size={24} color="#facc15" />
         </button>
-        <button onClick={handleLocateMe} className="bg-black/60 backdrop-blur-md p-1.5 rounded-lg size-10 flex items-center justify-center border border-white/20 shadow-xl">
+        <button onClick={handleLocateMe} className="bg-black/80 backdrop-blur-md p-1.5 rounded-lg size-10 flex items-center justify-center border border-white/20 shadow-xl">
           <FaLocationArrow size={22} color="#fff" />
         </button>
       </div>
 
       {/* Search Container */}
-      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[70%] max-w-md">
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-30 w-[70%] max-w-md">
         <div className="relative group">
-          <form onSubmit={handleSearch} className="flex items-center bg-black/80 text-white backdrop-blur-md rounded-2xl shadow-2xl border border-white/20 overflow-hidden">
+          <div className="flex items-center bg-black/80 pr-3 text-white backdrop-blur-md rounded-2xl shadow-2xl border border-white/20 overflow-hidden">
             <input
               type="text"
               value={searchQuery}
@@ -253,10 +228,26 @@ function App() {
               placeholder="ค้นหาสถานที่..."
               className="w-full text-white py-3 px-5 focus:outline-none bg-transparent"
             />
-            <button type="submit" className="p-3 text-white">
-              <IoSearch size={22} />
-            </button>
-          </form>
+
+            <AnimatePresence mode="wait">
+              {searchQuery.length > 0 ? (
+                <m.button
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  key={"search-icon"}
+                  onClick={() => setSearchQuery("")}
+                  className="p-0.5 flex items-center justify-center  bg-white/20 rounded-full size-6 "
+                >
+                  <IoClose size={"100%"} color="#fff" />
+                </m.button>
+              ) : (
+                <m.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} key={"remove-search-query"} className=" size-6 text-white">
+                  <IoSearch size={"100%"} color="#fff" />
+                </m.div>
+              )}
+            </AnimatePresence>
+          </div>
 
           {/* Dropdown Suggestions */}
           <AnimatePresence>
@@ -280,7 +271,6 @@ function App() {
                       setPlaceName(item.display_name.split(",")[0]); // ใส่ชื่อสถานที่
                       setSearchQuery(item.display_name.split(",")[0]); // อัปเดตช่องค้นหา
                       setSuggestions([]); // ล้างรายการแนะนำ
-                      // setShowSuggestions(false);
                     }}
                   >
                     <span className="font-bold text-sm line-clamp-1">{item.display_name.split(",")[0]}</span>
@@ -337,7 +327,7 @@ function App() {
                   <img src="/google-map.svg" alt="GMap" className="size-5" />
                 </a>
                 <button
-                  onClick={() => deleteFavorite(fav.id)}
+                  onClick={() => openModal(<ConfirmDelete onConfirm={() => deleteFavorite(fav.id)} />)}
                   className="bg-red-500/20 text-red-500 flex items-center justify-center size-9 rounded-lg hover:bg-red-500 hover:text-white transition-all"
                 >
                   <IoTrashOutline size={18} />
@@ -372,7 +362,7 @@ function App() {
                 value={placeName}
                 onChange={(e) => setPlaceName(e.target.value)}
                 disabled={isSearching}
-                className="w-full border border-white/20 px-3 py-2.5 text-sm rounded-xl bg-white/5 focus:outline-none focus:border-blue-500 transition-colors"
+                className="w-full border border-white/20 px-3 h-11 text-sm rounded-xl bg-white/5 focus:outline-none focus:border-blue-500 transition-colors"
               />
             </div>
 
@@ -381,7 +371,7 @@ function App() {
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full border border-white/20 px-3 py-2.5 text-sm rounded-xl bg-white/5 text-white focus:outline-none focus:border-blue-500"
+                className="w-full border border-white/20 px-3 py-2.5 h-11 rounded-xl bg-white/5 text-white focus:outline-none focus:border-blue-500"
               >
                 <option value="" className="bg-gray-800">
                   -- เลือกหมวดหมู่ --
